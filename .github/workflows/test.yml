@@ -1,0 +1,56 @@
+name: 测试 / Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Linux / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: 安装 pypinyin
+        run: pip install pypinyin
+      - name: 编译检查
+        run: python -m py_compile jiwenfa.py jiwenfa_compat.py build.py
+      - name: 运行自检
+        run: >-
+          python -c "import sys; sys.path.insert(0, '.');
+          import jiwenfa;
+          p, f = jiwenfa.run_self_test(verbose=False);
+          print('passed=%d failed=%d' % (p, len(f)));
+          sys.exit(1 if f else 0)"
+
+  test-windows-gbk:
+    name: Windows + GBK 控制台
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: 安装 pypinyin
+        run: pip install pypinyin
+      # 历史事故：源码里的 emoji 在 936 代码页下无法编码，
+      # 打包后的 exe 一启动就 UnicodeEncodeError 崩溃。
+      # 这里强制切到 936 复现真实中文控制台环境。
+      - name: 在 936 代码页下运行
+        shell: cmd
+        run: |
+          chcp 936
+          python -c "import sys; print('stdout encoding =', sys.stdout.encoding); sys.path.insert(0, '.'); import jiwenfa; p, f = jiwenfa.run_self_test(verbose=False); print('passed=%d failed=%d' % (p, len(f))); sys.exit(1 if f else 0)"
+      - name: 菜单端到端冒烟
+        shell: cmd
+        run: |
+          chcp 936 > nul
+          (echo 1& echo nihao& echo 2& echo hello world& echo 6& echo 0) | python jiwenfa.py

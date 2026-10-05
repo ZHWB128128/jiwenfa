@@ -152,10 +152,12 @@ class JiWenFa:
         return ''.join(word[0] for word in pinyin(chinese_text, style=Style.NORMAL))
 
     def encrypt_from_chinese(self, chinese_text):
-        """直接从中文加密"""
-        pinyin_text = self.chinese_to_pinyin(chinese_text)
-        out(f"  转换拼音: {pinyin_text}")
-        return self.encrypt_from_pinyin(pinyin_text)
+        """直接从中文加密。
+
+        只返回密文，不往 stdout 写东西 —— 库方法带打印副作用会污染
+        自检和 CI 的输出。「转换拼音」那行由菜单负责显示。
+        """
+        return self.encrypt_from_pinyin(self.chinese_to_pinyin(chinese_text))
 
     def encrypt_from_pinyin(self, pinyin_text):
         """从拼音加密。
@@ -440,7 +442,7 @@ def main():
         out("            《记文法》加密系统 v2.0")
         out("=" * 56)
         out("  1. 中文加密")
-        out("  2. 拼音加密")
+        out("  2. 拼音/英文加密")
         out("  3. 密文解密")
         out("  4. 显示映射表")
         out("  5. 显示统计信息")
@@ -467,16 +469,18 @@ def main():
                 out("  [×] 输入不能为空！")
                 continue
             try:
-                cipher = jwf.encrypt_from_chinese(text)
+                pinyin = jwf.chinese_to_pinyin(text)
+                cipher = jwf.encrypt_from_pinyin(pinyin)
             except JiWenFaError as exc:
                 out("  [×] %s" % exc)
                 continue
+            out("  转换拼音: %s" % pinyin)
             out("  [√] 记文密文: %s" % cipher)
 
         elif choice == '2':
             out()
-            out("→ 【拼音加密模式】")
-            text = input("请输入拼音: ").strip()
+            out("→ 【拼音/英文加密模式】")
+            text = input("请输入拼音或英文: ").strip()
             if not text:
                 out("  [×] 输入不能为空！")
                 continue
