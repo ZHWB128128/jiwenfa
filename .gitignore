@@ -1,0 +1,28 @@
+# PyInstaller 构建产物（随时可用 python build.py 重新生成）
+build/
+dist/
+
+# Python 字节码与打包缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统
+Thumbs.db
+.DS_Store
+desktop.ini
