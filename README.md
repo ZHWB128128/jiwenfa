@@ -212,11 +212,10 @@ Rough expansion: about **4.7x** for pinyin, **4.8x** for English.
 ## 测试 / Testing
 
 ```bash
-# 交互式：运行后选菜单 6 / interactive: pick option 6
-python jiwenfa.py
+python run_tests.py        # 完整测试：编译 + 自检 + 菜单冒烟
+python run_tests.py -v     # 逐项打印
 
-# 命令行 / one-shot
-python -c "import sys; sys.path.insert(0, '.'); import jiwenfa; p, f = jiwenfa.run_self_test(verbose=False); print('passed=%d failed=%d' % (p, len(f)))"
+python jiwenfa.py          # 交互式运行后选菜单 6 可单独跑自检
 ```
 
 源码环境跑 **50 项**断言；打包后的 exe 内跑 **49 项**（少了一项：冻结环境没有 `.py` 源文件，源码 GBK 扫描会自动跳过）。  
@@ -232,8 +231,8 @@ python -c "import sys; sys.path.insert(0, '.'); import jiwenfa; p, f = jiwenfa.r
 - 源码 GBK 可编码性（防 emoji 回归）
 - `CODE_SPACE` 取值正确（曾因按码位排序首项是制表符而显示错误）
 
-GitHub Actions 会在每次 push / PR 自动跑这些检查：Linux 上 Python 3.9 ~ 3.13，以及一个强制 `chcp 936` 的 Windows 任务，用来复现真实中文控制台。  
-GitHub Actions runs these on every push and pull request: Python 3.9–3.13 on Linux, plus a Windows job that forces `chcp 936` to reproduce a real Chinese console.
+GitHub Actions 会在每次 push / PR 自动跑 `run_tests.py`：Linux 上 Python 3.9 ~ 3.13，以及一个设置了 `PYTHONIOENCODING=cp936` 的 Windows 任务，用来复现真实中文控制台。  
+GitHub Actions runs these on every push and pull request: Python 3.9–3.13 on Linux, plus a Windows job with `PYTHONIOENCODING=cp936` to reproduce a real Chinese console.
 
 ---
 
@@ -245,6 +244,7 @@ CHANGELOG.md         更新日志 / changelog
 LICENSE              MIT 许可证 / MIT license
 jiwenfa.py           唯一实现：码表 + 加解密 + 菜单 + 自检
                      the only implementation: table, cipher, menu, self-test
+run_tests.py          测试入口：编译检查 + 自检 + 菜单端到端冒烟
 jiwenfa_compat.py    兼容垫片（原名 bbb.py），仅保留旧类名 JiWenFaImproved 别名，
                      项目内部无人引用 / legacy alias shim, unused internally
 build.py             PyInstaller 打包脚本 / packaging script

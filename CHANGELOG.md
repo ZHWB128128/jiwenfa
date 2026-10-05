@@ -21,8 +21,9 @@ Notable changes to this project. Format follows [Keep a Changelog](https://keepa
 - Self-test now asserts instead of merely printing; expanded to 50 checks
 - `README.md` 中英对照版 / bilingual README
 - `LICENSE`（MIT）/ MIT license
-- GitHub Actions：Linux 上 Python 3.9~3.13 + 强制 `chcp 936` 的 Windows 任务
-- GitHub Actions: Python 3.9–3.13 on Linux, plus a Windows job forcing `chcp 936`
+- `run_tests.py` 测试入口：编译检查 + 自检 + 菜单端到端冒烟，本地与 CI 共用
+- GitHub Actions：Linux 上 Python 3.9~3.13 + 设置 `PYTHONIOENCODING=cp936` 的 Windows 任务
+- GitHub Actions: Python 3.9–3.13 on Linux, plus a Windows job with `PYTHONIOENCODING=cp936`
 - `.gitattributes` 统一 UTF-8 / LF / CRLF
 - `.gitattributes` normalising UTF-8 / LF / CRLF
 

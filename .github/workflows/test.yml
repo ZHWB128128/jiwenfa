@@ -21,19 +21,19 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: 安装 pypinyin
         run: pip install pypinyin
-      - name: 编译检查
-        run: python -m py_compile jiwenfa.py jiwenfa_compat.py build.py
-      - name: 运行自检
-        run: >-
-          python -c "import sys; sys.path.insert(0, '.');
-          import jiwenfa;
-          p, f = jiwenfa.run_self_test(verbose=False);
-          print('passed=%d failed=%d' % (p, len(f)));
-          sys.exit(1 if f else 0)"
+      - name: 运行测试
+        run: python run_tests.py -v
 
   test-windows-gbk:
-    name: Windows + GBK 控制台
+    name: Windows + GBK 编码
     runs-on: windows-latest
+    # 必须用环境变量而不是 chcp 936：chcp 只改控制台输出代码页，
+    # 而 Python 的标准流编码取自 ANSI 代码页（GetACP），CI 机器是
+    # en-US 即 1252，只 chcp 的话 Python 根本不会切到 GBK。
+    # 历史事故（打包后的 exe 启动即 UnicodeEncodeError 崩溃）
+    # 正是发生在真实的 GBK 环境下，所以这个任务不能省。
+    env:
+      PYTHONIOENCODING: cp936
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,16 +41,5 @@ jobs:
           python-version: "3.13"
       - name: 安装 pypinyin
         run: pip install pypinyin
-      # 历史事故：源码里的 emoji 在 936 代码页下无法编码，
-      # 打包后的 exe 一启动就 UnicodeEncodeError 崩溃。
-      # 这里强制切到 936 复现真实中文控制台环境。
-      - name: 在 936 代码页下运行
-        shell: cmd
-        run: |
-          chcp 936
-          python -c "import sys; print('stdout encoding =', sys.stdout.encoding); sys.path.insert(0, '.'); import jiwenfa; p, f = jiwenfa.run_self_test(verbose=False); print('passed=%d failed=%d' % (p, len(f))); sys.exit(1 if f else 0)"
-      - name: 菜单端到端冒烟
-        shell: cmd
-        run: |
-          chcp 936 > nul
-          (echo 1& echo nihao& echo 2& echo hello world& echo 6& echo 0) | python jiwenfa.py
+      - name: 在 GBK 编码下运行测试
+        run: python run_tests.py -v
