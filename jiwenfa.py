@@ -7,11 +7,12 @@
    小写 a=0001、b=0002~0003 …… y=0301~0325，z 特殊独占 0000。
 2. 保留码（顺延在大写之后，保证 0000~0325 的原有密文仍可解密）：
    大写 A~Y 沿用同一递进规则占用 0326~0650，Z 独占 0651；
-   0652 表示"词间空格"；0653~0662 表示字面数字 0~9。
-   全部码值 <= 0662，4 位数字足够容纳。
-3. 密文格式：每个码写 4 位；**仅当相邻两个 token 都是码时才插入空格分隔**，
+   0652 是普通空格的保留码；其后是换行、制表符、全角空格等全部空白字符
+   的保留码，再之后是字面数字 0~9 的保留码。码值连续且远小于 10000。
+3. 密文中只可能出现 ASCII 数字、空白分隔符，以及原样保留的非数字字符。
+4. 密文格式：每个码写 4 位；**仅当相邻两个 token 都是码时才插入空格分隔**，
    标点等原样字符与码之间一律紧贴。例："a,b" -> "0001,0003"。
-4. 解密时空格仅作分隔符丢弃，词间空格由保留码 0652 承载，
+5. 解密时空白一律当分隔符丢弃，明文里的空白由保留码承载，
    因此 "nihao" 与 "ni hao" 不再混淆，往返可完全还原。
 """
 
@@ -21,10 +22,13 @@ import sys
 
 LOWER = "abcdefghijklmnopqrstuvwxyz"
 UPPER = LOWER.upper()
+_DIGITS = "0123456789"
 
 # 密文结构：4 位码与单个非数字原样字符组成的序列，相邻项之间至多一个空格。
 # 注意码与标点是紧贴的（"a,b" -> "0001,0003"），所以不能要求每两个 token 之间都有空格。
-_CIPHER_RE = re.compile(r'(?:\d{4}|[^\d\s])(?: ?(?:\d{4}|[^\d\s]))*')
+# 码必须写 [0-9] 而不是正则的 \d —— \d 在 Unicode 模式下同样匹配全角数字，
+# 会把原样保留的"１２３４"误判成码。
+_CIPHER_RE = re.compile(r'(?:[0-9]{4}|[^0-9\s])(?: ?(?:[0-9]{4}|[^0-9\s]))*')
 
 
 class JiWenFaError(Exception):
@@ -49,9 +53,11 @@ def out(text=''):
 class JiWenFa:
     """记文法加密系统"""
 
-    CODE_SPACE = 0        # 词间空格的保留码，构建后赋值
+    CODE_SPACE = 0        # 普通空格 ' ' 的保留码，构建后赋值
     CODE_DIGIT_BASE = 0   # 字面数字的起始码，构建后赋值
     MAX_CODE = 0          # 最大码值，构建后赋值
+    WS_CHARS = ()         # 全部空白字符，构建后赋值
+    WS_CODE_RANGE = (0, 0)  # 空白保留码的区间，构建后赋值
 
     def __init__(self, seed=None):
         if seed is not None:
@@ -92,11 +98,22 @@ class JiWenFa:
                 self._assign(letter, range(start, end + 1))
                 start = end + 1
 
-        # 3) 词间空格用独立保留码，与分隔空格区分开
-        self.CODE_SPACE = start
-        self.fixed_to_code[' '] = start
-        self.number_to_letter[start] = ' '
-        start += 1
+        # 3) 所有空白字符统一用保留码。
+        #    密文里因此不会出现任何裸空白，解密时就能放心地把空白一律当分隔符
+        #    丢弃；否则换行/制表符/全角空格会原样进入密文，解密时被 isspace
+        #    吞掉，往返就丢了信息。range 上界取 0x3001 是因为全角空格 U+3000
+    #    本身就是最后一个 Unicode 空白，写成 0x3000 会漏掉它。
+        ws_chars = [chr(c) for c in range(0x3001) if chr(c).isspace()]
+        ws_start = start
+        for ch in ws_chars:
+            self.fixed_to_code[ch] = start
+            self.number_to_letter[start] = ch
+            start += 1
+        self.WS_CHARS = ws_chars
+        self.WS_CODE_RANGE = (ws_start, start - 1)
+        # 注意 ws_chars 按码位排序，第一个是 '\t'(U+0009) 而不是空格 U+0020，
+        # 所以普通空格的码必须查表拿，不能直接拿块首 start。
+        self.CODE_SPACE = self.fixed_to_code[' ']
 
         # 4) 字面数字用独立保留码，避免明文 4 位数字被误当成码
         self.CODE_DIGIT_BASE = start
@@ -175,10 +192,14 @@ class JiWenFa:
             if char.isspace():
                 i += 1
                 continue
-            if char.isdigit():
-                if i + 4 <= n and cipher_text[i:i + 4].isdigit():
-                    code = int(cipher_text[i:i + 4])
-                    result.append(self.number_to_letter.get(code, '?'))
+            # 码只可能是 ASCII 数字，必须显式限定。str.isdigit() 对全角数字
+            # 和上标（U+00B2 之类）都返回 True，但 int() 前者会算出数值、
+            # 后者直接抛 ValueError，两者都会把解密搞坏。
+            # （注释里只用码位表示上标，因为源码全表要过 GBK 编码检查。）
+            if char in _DIGITS:
+                chunk = cipher_text[i:i + 4]
+                if len(chunk) == 4 and all(c in _DIGITS for c in chunk):
+                    result.append(self.number_to_letter.get(int(chunk), '?'))
                     i += 4
                 else:
                     # 不足 4 位的孤立数字，原样保留
@@ -213,7 +234,10 @@ class JiWenFa:
                 out("  %s -> %04d~%04d   (%d 种)" % (letter, codes[0], codes[-1], len(codes)))
         out("-" * 56)
         out("  保留码")
-        out("  空格 ' ' -> %04d   (与分隔空格区分，保证词边界可还原)" % self.CODE_SPACE)
+        out("  空白字符 -> %04d~%04d  (%d 种：空格/换行/制表符/全角空格等，密文里不留裸空白)"
+            % (self.WS_CODE_RANGE[0], self.WS_CODE_RANGE[1], len(self.WS_CHARS)))
+        out("    其中普通空格 ' ' -> %04d  (与分隔空格区分，保证词边界可还原)"
+            % self.CODE_SPACE)
         out("  数字 0-9 -> %04d~%04d  (明文数字不再被误判为码)"
             % (self.CODE_DIGIT_BASE, self.CODE_DIGIT_BASE + 9))
         out("-" * 56)
@@ -277,8 +301,9 @@ def run_self_test(verbose=True):
             out("  [-] 跳过源码 GBK 扫描（%s）" % exc)
 
     # --- 码表结构 ---
-    check("映射总数 = 663", len(jwf.number_to_letter) == 663,
-          "实际 %d" % len(jwf.number_to_letter))
+    check("码值连续且无空洞（0~MAX_CODE 全部有定义）",
+          len(jwf.number_to_letter) == jwf.MAX_CODE + 1,
+          "映射 %d 个，上限 %d" % (len(jwf.number_to_letter), jwf.MAX_CODE))
     check("码值上限 < 10000（4 位可容纳）", jwf.MAX_CODE < 10000,
           "实际 %d" % jwf.MAX_CODE)
     check("原有 0000~0325 区间保持不变（历史密文仍可解密）",
@@ -287,12 +312,28 @@ def run_self_test(verbose=True):
     check("正查表与反查表自洽",
           all(code in jwf.number_to_letter
               for codes in jwf.letter_to_range.values() for code in codes))
+    # 回归：ws_chars 按码位排序，首项是 '\t' 而非空格，早期版本把 CODE_SPACE
+    # 直接赋成块首，导致映射表把制表符的码显示成"空格"的码。
+    check("CODE_SPACE 确实是空格 ' ' 的码",
+          jwf.CODE_SPACE == jwf.fixed_to_code[' ']
+          and jwf.number_to_letter[jwf.CODE_SPACE] == ' '
+          and jwf.WS_CHARS[0] != ' ',
+          "CODE_SPACE=%d, 实际空格码=%d, 首空白=%r"
+          % (jwf.CODE_SPACE, jwf.fixed_to_code[' '], jwf.WS_CHARS[0]))
+    check("全部空白都走保留码",
+          all(ch in jwf.fixed_to_code for ch in jwf.WS_CHARS)
+          and jwf.WS_CODE_RANGE[1] - jwf.WS_CODE_RANGE[0] + 1 == len(jwf.WS_CHARS))
 
     # --- 往返还原 ---
+    # 后三组是回归用例，对应曾经真实存在的缺陷：
+    #   全角数字/上标曾被 int() 当成码，或直接把解密搞崩；
+    #   换行、制表符、全角空格曾原样进密文又在解密时被 isspace 吞掉。
     cases = [
         "nihao", "ni hao", "nihao，shijie。", "z", "zhongguo", "aoe",
         "NIHAO", "Ni Hao", "1234", "abc1234", "wo ai zhong guo!",
         "zhe,shi yi ge.you 'duo zhong' biao,dian de;ce shi.",
+        "１２３４", "\u00b2\u00b2\u00b2\u00b2", "ni\nhao",
+        "ni\thaо".replace("\u0445", "x"), "ni\u3000hao", "\u2460" + "2", "a\u00b7b",
     ]
     for src in cases:
         back = jwf.decrypt_to_pinyin(jwf.encrypt_from_pinyin(src))
@@ -305,11 +346,21 @@ def run_self_test(verbose=True):
     check("'nihao' 与 'ni hao' 解密后仍可区分",
           jwf.decrypt_to_pinyin(c1) != jwf.decrypt_to_pinyin(c2))
 
+    # --- 密文里不应出现裸空白 ---
+    # 所有空白都走保留码，密文中只允许出现充当分组分隔符的普通空格。
+    # 否则解密时 isspace 会把原样保留的换行/制表符/全角空格一并吞掉。
+    leak = set()
+    for src in cases:
+        for ch in jwf.encrypt_from_pinyin(src):
+            if ch.isspace() and ch != ' ':
+                leak.add((src, ch))
+    check("密文中不出现裸空白（空白全部走保留码）", not leak, " %s" % sorted(leak)[:3])
+
     # --- 密文格式 ---
     for src in ["a,b", "a，b", "a . b", "a, b", "ni hao"]:
         cipher = jwf.encrypt_from_pinyin(src)
         check("空格只出现在码与码之间 %r" % src,
-              re.search(r'(?<=[^\d]) | (?=[^\d])', cipher) is None,
+              re.search(r'(?<=[^0-9]) | (?=[^0-9])', cipher) is None,
               "密文=%r" % cipher)
         check("密文结构合法 %r" % src,
               _CIPHER_RE.fullmatch(cipher) is not None, "密文=%r" % cipher)
