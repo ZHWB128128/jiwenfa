@@ -192,14 +192,15 @@ echo -e "1\n你好，世界。\n6\n0" | dist\记文法加密器.exe
 ```
 README.md         本文件
 jiwenfa.py        唯一实现：码表 + 加解密 + 菜单 + 自检
-bbb.py            兼容层。旧版曾在这里另存一份「改进版」实现，与 jiwenfa.py
-                  的标点空格规则互相矛盾，现已收敛为转发，保留旧类名
-                  JiWenFaImproved 作为别名，外部脚本可继续 import
+jiwenfa_compat.py 兼容垫片（原名 bbb.py）。旧版曾在这里另存一份「改进版」
+                  实现，与 jiwenfa.py 的标点空格规则互相矛盾，现已收敛为
+                  纯转发，保留旧类名 JiWenFaImproved 作为别名。项目内部无人
+                  引用它，确认外部脚本也迁移完后即可删除
 build.py          PyInstaller 打包脚本
 记文法加密器.spec    构建配置（由 build.py 自动重新生成）
 ```
 
-新增功能请只改 `jiwenfa.py`。不要再在 `bbb.py` 里写实现。
+新增功能请只改 `jiwenfa.py`。不要再在 `jiwenfa_compat.py` 里写实现。
 
 ---
 
